@@ -2,8 +2,8 @@
 /*
  * Source-qualified T6001 ANE fields for J316c.
  *
- * Keep this node disabled until the DART provider/SID tuple, DART window
- * names, and complete power-domain list are recovered from source.
+ * Keep these nodes disabled pending staged integration and valid-input bind
+ * verification.
  */
 
 /dts-v1/;
@@ -22,14 +22,29 @@
 			#address-cells = <2>;
 			#size-cells = <2>;
 
+			ane_dart: iommu@285800000 {
+				compatible = "apple,t6000-dart";
+				reg = <0x2 0x85800000 0x0 0x00004000>;
+				#iommu-cells = <1>;
+				interrupt-parent = <&aic>;
+				interrupts = <AIC_IRQ 0 771 IRQ_TYPE_LEVEL_HIGH>;
+				power-domains = <&ps_ane_sys>;
+				status = "disabled";
+			};
+
 			ane@284000000 {
 				compatible = "apple,t6000-ane";
-				reg-names = "engine";
-				reg = <0x2 0x84000000 0x0 0x02000000>;
+				reg-names = "engine", "dart0", "dart1", "dart2";
+				reg = <0x2 0x84000000 0x0 0x02000000>,
+				      <0x2 0x85800000 0x0 0x00004000>,
+				      <0x2 0x85810000 0x0 0x00004000>,
+				      <0x2 0x85820000 0x0 0x00004000>;
 				interrupt-parent = <&aic>;
 				interrupt-names = "ane", "dart";
 				interrupts = <AIC_IRQ 0 770 IRQ_TYPE_LEVEL_HIGH>,
 					     <AIC_IRQ 0 771 IRQ_TYPE_LEVEL_HIGH>;
+				iommus = <&ane_dart 0>;
+				power-domains = <&ps_ane_sys_cpu>;
 				status = "disabled";
 			};
 		};
