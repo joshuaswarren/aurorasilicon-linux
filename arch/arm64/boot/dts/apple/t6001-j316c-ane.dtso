@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * Source-qualified T6001 ANE fields for J316c.
+ *
+ * Keep this node disabled until the DART provider/SID tuple, DART window
+ * names, and complete power-domain list are recovered from source.
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/interrupt-controller/apple-aic.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+
+/ {
+	compatible = "apple,j316c", "apple,t6001";
+
+	fragment@0 {
+		target-path = "/soc";
+
+		__overlay__ {
+			#address-cells = <2>;
+			#size-cells = <2>;
+
+			ane@284000000 {
+				compatible = "apple,t6000-ane";
+				reg-names = "engine";
+				reg = <0x2 0x84000000 0x0 0x02000000>;
+				interrupt-parent = <&aic>;
+				interrupt-names = "ane", "dart";
+				interrupts = <AIC_IRQ 0 770 IRQ_TYPE_LEVEL_HIGH>,
+					     <AIC_IRQ 0 771 IRQ_TYPE_LEVEL_HIGH>;
+				status = "disabled";
+			};
+		};
+	};
+};
