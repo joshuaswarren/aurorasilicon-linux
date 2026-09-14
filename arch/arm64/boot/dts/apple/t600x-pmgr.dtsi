@@ -418,6 +418,75 @@
 		power-domains = <&DIE_NODE(ps_ane_sys)>;
 	};
 
+	/*
+	 * T8103 maps ANE SET at PMGR+0xc000 inside a 0x14000 syscon.
+	 * T6001 SET0 is 0x28e08c000. Existing ps_ane_sys_cpu@2c8 is the
+	 * engine MMIO partition, not this block. Do not rename it.
+	 */
+	DIE_NODE(ps_ane_set0): power-controller@c000 {
+		compatible = "apple,t6000-pmgr-pwrstate", "apple,pmgr-pwrstate";
+		reg = <0xc000 4>;
+		#power-domain-cells = <0>;
+		#reset-cells = <0>;
+		label = DIE_LABEL(ane_set0);
+		power-domains = <&DIE_NODE(ps_ane_sys_cpu)>;
+	};
+
+	DIE_NODE(ps_ane_base): power-controller@c008 {
+		compatible = "apple,t6000-pmgr-pwrstate", "apple,pmgr-pwrstate";
+		reg = <0xc008 4>;
+		#power-domain-cells = <0>;
+		#reset-cells = <0>;
+		label = DIE_LABEL(ane_base);
+		power-domains = <&DIE_NODE(ps_ane_set0)>;
+	};
+
+	DIE_NODE(ps_ane_set1): power-controller@c010 {
+		compatible = "apple,t6000-pmgr-pwrstate", "apple,pmgr-pwrstate";
+		reg = <0xc010 4>;
+		#power-domain-cells = <0>;
+		#reset-cells = <0>;
+		label = DIE_LABEL(ane_set1);
+		power-domains = <&DIE_NODE(ps_ane_base)>;
+	};
+
+	DIE_NODE(ps_ane_set2): power-controller@c018 {
+		compatible = "apple,t6000-pmgr-pwrstate", "apple,pmgr-pwrstate";
+		reg = <0xc018 4>;
+		#power-domain-cells = <0>;
+		#reset-cells = <0>;
+		label = DIE_LABEL(ane_set2);
+		power-domains = <&DIE_NODE(ps_ane_base)>;
+	};
+
+	DIE_NODE(ps_ane_set3): power-controller@c020 {
+		compatible = "apple,t6000-pmgr-pwrstate", "apple,pmgr-pwrstate";
+		reg = <0xc020 4>;
+		#power-domain-cells = <0>;
+		#reset-cells = <0>;
+		label = DIE_LABEL(ane_set3);
+		power-domains = <&DIE_NODE(ps_ane_base)>;
+	};
+
+	DIE_NODE(ps_ane_set4): power-controller@c028 {
+		compatible = "apple,t6000-pmgr-pwrstate", "apple,pmgr-pwrstate";
+		reg = <0xc028 4>;
+		#power-domain-cells = <0>;
+		#reset-cells = <0>;
+		label = DIE_LABEL(ane_set4);
+		power-domains = <&DIE_NODE(ps_ane_base)>;
+	};
+
+	/* T6001 ADT range1 ends at 0xc02c; live overlay does not attach set5. */
+	DIE_NODE(ps_ane_set5): power-controller@c030 {
+		compatible = "apple,t6000-pmgr-pwrstate", "apple,pmgr-pwrstate";
+		reg = <0xc030 4>;
+		#power-domain-cells = <0>;
+		#reset-cells = <0>;
+		label = DIE_LABEL(ane_set5);
+		power-domains = <&DIE_NODE(ps_ane_base)>;
+	};
+
 #if DIE_NO == 0
 	/* PMP is only present on die 0 of the M1 Ultra */
 	DIE_NODE(ps_pmp): power-controller@2d8 {
