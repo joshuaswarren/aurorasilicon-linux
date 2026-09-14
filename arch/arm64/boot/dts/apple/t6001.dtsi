@@ -85,3 +85,48 @@
 &gpu {
 	compatible = "apple,agx-t6001", "apple,agx-g13c", "apple,agx-g13s";
 };
+
+&{/soc} {
+	ane_dart0: iommu@285800000 {
+		compatible = "apple,t6000-dart";
+		reg = <0x2 0x85800000 0x0 0x4000>;
+		#iommu-cells = <1>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 0 771 IRQ_TYPE_LEVEL_HIGH>;
+		power-domains = <&ps_ane_sys>;
+		status = "disabled";
+	};
+
+	ane_dart1: iommu@285810000 {
+		compatible = "apple,t6000-dart";
+		reg = <0x2 0x85810000 0x0 0x4000>;
+		#iommu-cells = <1>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 0 771 IRQ_TYPE_LEVEL_HIGH>;
+		power-domains = <&ps_ane_sys_cpu>;
+		status = "disabled";
+	};
+
+	ane_dart2: iommu@285820000 {
+		compatible = "apple,t6000-dart";
+		reg = <0x2 0x85820000 0x0 0x4000>;
+		#iommu-cells = <1>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 0 771 IRQ_TYPE_LEVEL_HIGH>;
+		power-domains = <&ps_ane_sys_cpu>;
+		status = "disabled";
+	};
+
+	ane: ane@284000000 {
+		compatible = "apple,t6000-ane";
+		reg-names = "engine";
+		reg = <0x2 0x85c04000 0x0 0x24000>;
+		interrupt-parent = <&aic>;
+		interrupt-names = "ane";
+		interrupts = <AIC_IRQ 0 770 IRQ_TYPE_LEVEL_HIGH>;
+		iommus = <&ane_dart0 0>, <&ane_dart1 0>, <&ane_dart2 0>;
+		power-domains = <&ps_ane_sys_cpu>, <&ps_ane_set1>,
+			<&ps_ane_set2>, <&ps_ane_set3>, <&ps_ane_set4>;
+		status = "disabled";
+	};
+};
