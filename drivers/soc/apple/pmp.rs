@@ -166,11 +166,11 @@ impl PmpData {
         let mut guard = self.rtkit.lock();
         let mut rtk = guard.as_mut().as_pin_mut().unwrap();
         rtk.as_mut().wake()?;
-        rtk.start_endpoint(PMP_ENDPOINT)?;
+        rtk.as_mut().start_endpoint(PMP_ENDPOINT)?;
         // The firmware's endpoint table carries a second, runtime-numbered
         // application endpoint ("pmp_ctrl"); start it when advertised so PM
         // traffic routed there reaches recv_message too.
-        if let Err(e) = rtk.start_endpoint(PMP_CTRL_ENDPOINT) {
+        if let Err(e) = rtk.as_mut().start_endpoint(PMP_CTRL_ENDPOINT) {
             dev_info!(
                 self.dev,
                 "pmp_ctrl endpoint {:#x} not started: {:?}",
@@ -380,10 +380,13 @@ impl PmpData {
         }
         // SAFETY: TODO: ensure self.dev is bound
         let bound_dev = unsafe { self.dev.as_bound() };
-        let shmem = Coherent::<[u8]>::zeroed_slice(bound_dev, SHMEM_SIZE, GFP_KERNEL)?;
+        let shmem = Coherent::<u8>::zeroed_slice(bound_dev, SHMEM_SIZE, GFP_KERNEL)?;
         if let Some(table) = &state.iova_table {
-            let dst = &mut shmem.as_mut()[SHMEM_MAPS_OFFSET..];
-            for (i, e) in table.iter().enumerate() {
+            // SAFETY: shmem and table are DMA-coherent allocations owned by
+            // this state; no aliasing references exist (state lock held).
+            let (dst, src) = unsafe { (shmem.as_mut(), table.as_ref()) };
+            let dst = &mut dst[SHMEM_MAPS_OFFSET..];
+            for (i, e) in src.iter().enumerate() {
                 let off = i * 24;
                 if off + 24 > dst.len() {
                     break;
