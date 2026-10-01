@@ -457,7 +457,9 @@ impl PmpData {
         };
         let mut rtk_guard = self.rtkit.lock();
         let rtk = rtk_guard.as_mut().as_pin_mut().unwrap();
-        rtk.send_message(PMP_ENDPOINT, reply)?;
+        // Reply on the endpoint the request arrived on (all observed traffic
+        // is on PMP_ENDPOINT; pmp_ctrl traffic must be answered there).
+        rtk.send_message(ep, reply)?;
         Ok(())
     }
 }
