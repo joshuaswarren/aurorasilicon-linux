@@ -10,8 +10,10 @@
 		compatible = "apple,t6021-ane-mailbox", "apple,asc-mailbox-v4";
 		reg = <0x2 0x85408000 0x0 0x4000>;
 		interrupt-parent = <&aic>;
-		interrupts = <AIC_IRQ 0 884 IRQ_TYPE_LEVEL_HIGH>;
-		interrupt-names = "recv-not-empty";
+		/* send-empty: AIC 1833 has no known source and never fired */
+		interrupts = <AIC_IRQ 0 884 IRQ_TYPE_LEVEL_HIGH>,
+			<AIC_IRQ 0 1833 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "recv-not-empty", "send-empty";
 		#mbox-cells = <0>;
 		status = "disabled";
 	};
@@ -22,7 +24,7 @@
 		#iommu-cells = <1>;
 		interrupt-parent = <&aic>;
 		interrupts = <AIC_IRQ 0 885 IRQ_TYPE_LEVEL_HIGH>;
-		power-domains = <&ps_ane_sys>;
+		power-domains = <&ps_pmp>;
 		status = "disabled";
 	};
 
