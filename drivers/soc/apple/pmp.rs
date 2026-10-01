@@ -56,6 +56,14 @@ const OPC_FREE: u64 = 0x14;
 const OPC_SET_BUF: u64 = 0x30;
 const OPC_REGISTER_IOREG: u64 = 0x32;
 const OPC_SET_IOREG: u64 = 0x34;
+const OPC_STARTUP: u64 = 0x00;
+const OPC_CONFIGURE: u64 = 0x01;
+const OPC_CONFIGURE_ACK: u64 = 0x02;
+const OPC_PM_PING: u64 = 0x20; // class 2 (bit 53); cmd sits below the opc byte
+const OPC_PM_CMD16: u64 = 0x21;
+const SHMEM_SIZE: usize = 0x10000;
+const SHMEM_MAPS_OFFSET: usize = 0xe000;
+const PMP_CTRL_ENDPOINT: u8 = 0x21;
 const OPC_ACK_MASK: u64 = 0x1;
 const OPC_SHIFT: u32 = 48;
 const MALLOC_SIZE_MASK: u64 = 0xFFFFFF;
@@ -89,6 +97,7 @@ struct PmpState {
     allocs: KVec<PmpAllocation>,
     value_buf: Option<u64>,
     ioreg_entries: KVec<u32>,
+    shmem: Option<Coherent<[u8]>>,
 }
 
 impl PmpState {
@@ -98,6 +107,7 @@ impl PmpState {
             allocs: KVec::with_capacity(10, GFP_KERNEL)?,
             value_buf: None,
             ioreg_entries: KVec::with_capacity(340, GFP_KERNEL)?,
+            shmem: None,
         })
     }
     fn find_alloc(&self, addr: u64) -> Option<usize> {
@@ -156,7 +166,19 @@ impl PmpData {
         let mut guard = self.rtkit.lock();
         let mut rtk = guard.as_mut().as_pin_mut().unwrap();
         rtk.as_mut().wake()?;
-        rtk.start_endpoint(PMP_ENDPOINT)
+        rtk.start_endpoint(PMP_ENDPOINT)?;
+        // The firmware's endpoint table carries a second, runtime-numbered
+        // application endpoint ("pmp_ctrl"); start it when advertised so PM
+        // traffic routed there reaches recv_message too.
+        if let Err(e) = rtk.start_endpoint(PMP_CTRL_ENDPOINT) {
+            dev_info!(
+                self.dev,
+                "pmp_ctrl endpoint {:#x} not started: {:?}",
+                PMP_CTRL_ENDPOINT,
+                e
+            );
+        }
+        Ok(())
     }
     fn patch_bootargs(&self, dev: &platform::Device<Core>, patches: &[(u32, u32)]) -> Result<()> {
         let io = self.pmp_mmio.access(dev.as_ref())?.relaxed();
@@ -345,7 +367,61 @@ impl PmpData {
         let msg = (OPC_SET_IOREG | OPC_ACK_MASK) << OPC_SHIFT | len;
         Ok(msg)
     }
-    fn recv_message(&self, msg: u64) -> Result<()> {
+    // Firmware "Startup" (class 0, msg 0) -> macOS replies "Configure"
+    // (TYPE 0x10 << 44, DVA = shared memory, bits 47:0). ApplePMP
+    //::_messageHandler builds exactly this (25G83). The shared memory is
+    // zeroed and, when the PIO table already exists, carries the reg maps at
+    // +0xe000 (m1n1 pmp_init.py convention).
+    fn configure(&self) -> Result<u64> {
+        let mut state = self.state.lock();
+        if state.shmem.is_some() {
+            dev_err!(self.dev, "Configure with existing shmem");
+            return Err(EIO);
+        }
+        // SAFETY: TODO: ensure self.dev is bound
+        let bound_dev = unsafe { self.dev.as_bound() };
+        let shmem = Coherent::<[u8]>::zeroed_slice(bound_dev, SHMEM_SIZE, GFP_KERNEL)?;
+        if let Some(table) = &state.iova_table {
+            let dst = &mut shmem.as_mut()[SHMEM_MAPS_OFFSET..];
+            for (i, e) in table.iter().enumerate() {
+                let off = i * 24;
+                if off + 24 > dst.len() {
+                    break;
+                }
+                dst[off..off + 8].copy_from_slice(&e._host_addr.to_le_bytes());
+                dst[off + 8..off + 16].copy_from_slice(&e._pio_base.to_le_bytes());
+                dst[off + 16..off + 24].copy_from_slice(&e._size.to_le_bytes());
+            }
+        }
+        let dva = shmem.dma_handle();
+        state.shmem = Some(shmem);
+        dev_info!(self.dev, "PMP Startup -> Configure shmem dva {:#x}", dva);
+        Ok((OPC_CONFIGURE << OPC_SHIFT) | (dva & MSG_IOVA_MASK))
+    }
+    // Configure_Ack: low 26 bits page-shifted = firmware memory base
+    // (ApplePMP::_initMemoryAckHandler). Recorded, no follow-up sent yet: the
+    // macOS state>=2 sender is not statically resolved and this build is the
+    // observation run.
+    fn configure_ack(&self, msg: u64) {
+        let base = (msg & 0x3ffffff) << 12;
+        dev_info!(self.dev, "PMP Configure ack: fw memory base {:#x}", base);
+    }
+    // Class 2 (bit 53) PM messages: cmd = bits 47:44 (+bit 48 for cmd 16),
+    // args at 43:40 / 39:32 / 31:16 / 15:0 (ApplePMP::_sendPMCommand).
+    fn pm_message(&self, ep: u8, msg: u64) {
+        dev_info!(
+            self.dev,
+            "PMP PM: ep {:#x} cmd {} raw {:#x} args {:#x} {:#x} {:#x} {:#x}",
+            ep,
+            (msg >> 44) & 0x1f,
+            msg,
+            (msg >> 40) & 0xf,
+            (msg >> 32) & 0xff,
+            (msg >> 16) & 0xffff,
+            msg & 0xffff
+        );
+    }
+    fn recv_message(&self, ep: u8, msg: u64) -> Result<()> {
         let opc = (msg >> OPC_SHIFT) & 0xFF;
         let reply = match opc {
             OPC_GET_IOVA_TABLE => self.get_iova_table()?,
@@ -354,8 +430,25 @@ impl PmpData {
             OPC_SET_BUF => self.set_buf(msg & MSG_IOVA_MASK)?,
             OPC_REGISTER_IOREG => self.register_ioreg(msg & MSG_IOVA_MASK)?,
             OPC_SET_IOREG => self.set_ioreg(msg & SET_IOREG_INDEX_MASK)?,
+            OPC_STARTUP => self.configure()?,
+            OPC_CONFIGURE_ACK => {
+                self.configure_ack(msg);
+                return Ok(());
+            }
+            // Class 2 (PM): cmd is below the opc byte, so both possible opc
+            // values (cmd < 16 -> 0x20, cmd 16 -> 0x21) land here.
+            OPC_PM_PING | OPC_PM_CMD16 => {
+                self.pm_message(ep, msg);
+                return Ok(());
+            }
             _ => {
-                dev_err!(self.dev, "Got unknown message {}", msg);
+                dev_info!(
+                    self.dev,
+                    "Got unknown message: ep {:#x} class {} raw {:#x}",
+                    ep,
+                    (msg >> 52) & 0xf,
+                    msg
+                );
                 return Err(EIO);
             }
         };
@@ -384,8 +477,8 @@ impl rtkit::Operations for PmpData {
     type Data = Arc<PmpData>;
     type Buffer = NoBuffer;
 
-    fn recv_message(data: <Self::Data as ForeignOwnable>::Borrowed<'_>, _ep: u8, msg: u64) {
-        let ret = data.recv_message(msg);
+    fn recv_message(data: <Self::Data as ForeignOwnable>::Borrowed<'_>, ep: u8, msg: u64) {
+        let ret = data.recv_message(ep, msg);
         if let Err(e) = ret {
             dev_err!(data.dev, "Failed to handle rtkit message, error: {:?}", e);
         }
