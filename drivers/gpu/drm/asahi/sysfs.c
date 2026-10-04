@@ -51,7 +51,7 @@ struct asahi_stats_snapshot {
 unsigned long long asahi_stats_snapshot_ptr;
 EXPORT_SYMBOL_GPL(asahi_stats_snapshot_ptr);
 
-static ssize_t asahi_agx_stats_show(struct device *dev,
+static ssize_t agx_stats_show(struct device *dev,
 				     struct device_attribute *attr, char *buf)
 {
 	struct asahi_stats_snapshot __rcu *snap;
@@ -90,6 +90,9 @@ static ssize_t asahi_agx_stats_show(struct device *dev,
 
 	return n;
 }
+
+int asahi_sysfs_register(struct device *dev);
+void asahi_sysfs_unregister(struct device *dev);
 
 static DEVICE_ATTR_RO(agx_stats);
 
